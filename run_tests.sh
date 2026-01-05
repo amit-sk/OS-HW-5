@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+DEBUG=${DEBUG:-false}
+
 CC=${CC:-gcc}
-CFLAGS="-std=c11 -O0 -g -Wall -Wextra -pedantic"
+# if debug
+if [ "$DEBUG" = "true" ]; then
+  CFLAGS="-std=c11 -O0 -g -Wall -Wextra -pedantic"
+else
+  CFLAGS="-std=c11 -O2 -Wall -Wextra -pedantic"
+fi
 # On some Linux distros, C11 threads need -pthread (even when using threads.h)
 LDFLAGS="-pthread"
 

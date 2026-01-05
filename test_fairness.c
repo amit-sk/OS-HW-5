@@ -85,11 +85,9 @@ int main(void) {
     for (int k = 0; k < N; k++) {
         int consumer_index = consumer_by_sleep_order[k];
         ASSERT_TRUE(consumer_index != -1);
-        printf("consumer index: (%d)\n", consumer_index);
 
         int got = *(int*)args[consumer_index].got_item;
         int expected = 10000 + k;
-        printf("expecting: (%d), got (%d)\n", expected, got);
         ASSERT_TRUE(got == expected);
     }
 
