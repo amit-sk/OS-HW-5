@@ -1,4 +1,4 @@
-#include<stdatomic.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -66,9 +66,6 @@ void enqueue(void *x) {
             waiting_queue_tail = NULL;
         }
         waiting_queue_head = waiting_queue_head->next;
-
-        free(waiting_thread->data);
-        free(waiting_thread);
     }
 
     mtx_unlock(&lock);
@@ -79,11 +76,12 @@ void *dequeue(void) {
     node_t *node;
     
     mtx_lock(&lock);
-    if (head == NULL) {  // nothing to return right now - add this thread to the waiting queue
+    // if there is nothing to return right now, or if someone else is already waiting for this item - add this thread to the waiting queue
+    if (head == NULL || waiting_threads_count > 0) {
         cnd_t *conditional_variable_ptr = malloc(sizeof(cnd_t));
         cnd_init(conditional_variable_ptr);
 
-        node_t *waiting_thread = malloc(sizeof(node_t));  // the node for the waiting thread + ptr will be freed when it is dequeued.
+        node_t *waiting_thread = malloc(sizeof(node_t));
         waiting_thread->data = conditional_variable_ptr;
         waiting_thread->next = 0;
 
@@ -98,8 +96,8 @@ void *dequeue(void) {
  
         cnd_wait(conditional_variable_ptr, &lock);
         cnd_destroy(conditional_variable_ptr);
-        // free(waiting_thread->data);
-        // free(waiting_thread);
+        free(waiting_thread->data);
+        free(waiting_thread);
     }
     
     node = head;
