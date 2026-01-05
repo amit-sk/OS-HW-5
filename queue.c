@@ -16,14 +16,18 @@ typedef struct node {
 } node_t;
 
 mtx_t lock;
-cnd_t notEmpty;
+
+// === queue globals ===
 node_t *head = NULL;
 node_t *tail = NULL;
 atomic_int visited_count = 0;
 
+// === globals for waiting threads ===
+node_t *waiting_queue_head = NULL;
+node_t *waiting_queue_tail = NULL;
+
 void initQueue(void) {
     mtx_init(&lock, mtx_plain);
-    cnd_init(&notEmpty);
 }
 
 void destroyQueue(void) {
@@ -34,10 +38,10 @@ void destroyQueue(void) {
      * – The queue is empty when destroyQueue() is called
     */
     mtx_destroy(&lock);
-    cnd_destroy(&notEmpty);
 }
 
 void enqueue(void *x) {
+    node_t *waiting_thread = NULL;
     node_t *new_node = malloc(sizeof(node_t)); // You can assume malloc does not fail.
     new_node->data = x;
     new_node->next = NULL;
@@ -52,7 +56,21 @@ void enqueue(void *x) {
         tail = new_node;
     }
 
-    cnd_signal(&notEmpty);
+    if (waiting_queue_head != NULL) {
+        // someone is waiting for an item to consume - signal first in line
+        waiting_thread = waiting_queue_head;
+        cnd_signal((cnd_t *)waiting_thread->data);
+
+        if (waiting_queue_tail == waiting_queue_head) {
+            // there was only one waiting thread - now none.
+            waiting_queue_tail = NULL;
+        }
+        waiting_queue_head = waiting_queue_head->next;
+
+        free(waiting_thread->data);
+        free(waiting_thread);
+    }
+
     mtx_unlock(&lock);
 }
 
@@ -61,8 +79,27 @@ void *dequeue(void) {
     node_t *node;
     
     mtx_lock(&lock);
-    while (head == NULL) {
-        cnd_wait(&notEmpty, &lock);
+    if (head == NULL) {  // nothing to return right now - add this thread to the waiting queue
+        cnd_t *conditional_variable_ptr = malloc(sizeof(cnd_t));
+        cnd_init(conditional_variable_ptr);
+
+        node_t *waiting_thread = malloc(sizeof(node_t));  // the node for the waiting thread + ptr will be freed when it is dequeued.
+        waiting_thread->data = conditional_variable_ptr;
+        waiting_thread->next = 0;
+
+        // add to waiting threads queue
+        if (waiting_queue_head == NULL) {
+            waiting_queue_head = waiting_thread;
+            waiting_queue_tail = waiting_queue_head;
+        } else {
+            waiting_queue_tail->next = waiting_thread;
+            waiting_queue_tail = waiting_thread;
+        }
+ 
+        cnd_wait(conditional_variable_ptr, &lock);
+        cnd_destroy(conditional_variable_ptr);
+        // free(waiting_thread->data);
+        // free(waiting_thread);
     }
     
     node = head;
