@@ -54,8 +54,31 @@ void destroyQueue(void) {
     mtx_destroy(&lock);
 }
 
-void enqueue(void *x) {
+void try_to_assign_node(item_node_t *node) {
+    /*
+     * assuming non-NULL, valid and unassigned node, and assuming mutex is locked prior to the call.
+    */
     waiting_thread_node_t *waiting_thread = NULL;
+
+    if (waiting_queue_head != NULL) {
+        // someone is waiting for an item to consume - signal first in line
+        waiting_thread = waiting_queue_head;
+
+        // assign the item to the waiting thread, and mark the item as assigned
+        waiting_thread->item = node;
+        node->is_assigned = true;
+        cnd_signal(waiting_thread->conditional_var);
+
+        // progress the waiting queue
+        if (waiting_queue_tail == waiting_queue_head) {
+            // there was only one waiting thread - now none.
+            waiting_queue_tail = NULL;
+        }
+        waiting_queue_head = waiting_queue_head->next;
+    }
+}
+
+void enqueue(void *x) {
     item_node_t *new_node = malloc(sizeof(item_node_t)); // You can assume malloc does not fail.
     memset(new_node, 0, sizeof(item_node_t));
     new_node->data = x;
@@ -71,22 +94,8 @@ void enqueue(void *x) {
         tail = new_node;
     }
 
-    if (waiting_queue_head != NULL) {
-        // someone is waiting for an item to consume - signal first in line
-        waiting_thread = waiting_queue_head;
-
-        // assign the item to the waiting thread, and mark the item as assigned
-        waiting_thread->item = new_node;
-        new_node->is_assigned = true;
-        cnd_signal(waiting_thread->conditional_var);
-
-        // progress the waiting queue
-        if (waiting_queue_tail == waiting_queue_head) {
-            // there was only one waiting thread - now none.
-            waiting_queue_tail = NULL;
-        }
-        waiting_queue_head = waiting_queue_head->next;
-    }
+    // if a thread is waiting, assign the new node to it and signal it.
+    try_to_assign_node(new_node);
 
     mtx_unlock(&lock);
 }
@@ -147,6 +156,11 @@ void *dequeue(void) {
     data = node->data;
     free(node);
     visited_count++;
+
+    // check if the new head can be assigned to an existing waiting thread.
+    if (head != NULL && !head->is_assigned) {
+        try_to_assign_node(head);
+    }
 
     mtx_unlock(&lock);
     return data;
