@@ -74,9 +74,13 @@ void enqueue(void *x) {
     if (waiting_queue_head != NULL) {
         // someone is waiting for an item to consume - signal first in line
         waiting_thread = waiting_queue_head;
+
+        // assign the item to the waiting thread, and mark the item as assigned
         waiting_thread->item = new_node;
+        new_node->is_assigned = true;
         cnd_signal(waiting_thread->conditional_var);
 
+        // progress the waiting queue
         if (waiting_queue_tail == waiting_queue_head) {
             // there was only one waiting thread - now none.
             waiting_queue_tail = NULL;
